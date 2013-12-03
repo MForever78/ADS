@@ -1,5 +1,3 @@
-//wrong: **keys
-
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -7,7 +5,7 @@
 
 typedef struct node
 {
-	void **children;
+	struct node **children;
 	int **keys;
 	struct node *parent;
 	int isLeaf;
@@ -15,11 +13,10 @@ typedef struct node
 	struct node *next;
 } node;
 
-const int childSize = 3;
+const int childSize = 4;
 
 /* Search */
 
-node *find();
 node *findLeaf();
 
 /* Intert */
@@ -51,29 +48,31 @@ int main()
 
 	node *root = NULL;	
 
-	printf("success\n");
 	for (i = 0; i < n; i++){
 		printf("inserting: %d\n", num[i]);
-		root = insert(root, num[i]);
-		printf("success\n");
+		root = insert(root, &num[i]);
+		printf("tree[%d]:\n", i);
+		treePrint(root);
 	}
 	treePrint(root);
 }
 
-node *find(node *root, int key)
+/*
+node *find(node *root, int *key)
 {
 	int i;
 	node *leaf;
 	leaf = findLeaf(root, key);
 	if (leaf == NULL)
 		return NULL;
-	for (i = 0; i < leaf->numChild && leaf->keys[i] != key; i++){}
+	for (i = 0; i < leaf->numChild && *leaf->keys[i] != *key; i++){}
 	if (i == leaf->numChild)
 		return NULL;
-	return (node *)leaf->children[i];
+	return leaf->children[i];
 }
+*/
 
-node *findLeaf(node *root, int key)
+node *findLeaf(node *root, int *key)
 {
 	node *nd;
 	int i;
@@ -81,8 +80,10 @@ node *findLeaf(node *root, int key)
 		return NULL;
 	nd = root;
 	while (nd->isLeaf == 0){
-		for (i = 0; i < nd->numChild && nd->keys[i] <= key; i++){}
-		nd = (node *)nd->children[i];
+		// printf("start\n");
+		for (i = 0; i < nd->numChild && *nd->keys[i] <= *key; i++){}
+		// printf("end\n");
+		nd = nd->children[i];
 	}
 	return nd;
 }
@@ -137,17 +138,24 @@ node *SetNewRoot(node *l, node *r, int *key)
 node *insert(node *root, int *key)
 {
 	node *leaf;
-	int index;
+	int index, diff;
 	leaf = findLeaf(root, key);
 	if (leaf == NULL){
 		return SetNewTree(key);
 	}
-	for (index = 0; index < leaf->numChild && key < leaf->keys[index]; index++){}
-	if (key == leaf->keys[index]){
+	// printf("start\n");
+	for (index = 0; index < leaf->numChild && (diff = (*key - *leaf->keys[index])) > 0; index++){}
+	// printf("end\n");
+	// printf("index: %d\n", index);
+	// printf("\n");
+	if (diff == 0){
 		printf("Key %d is duplicated\n", *key);
+		return root;
 	}
-	if (leaf->numChild < childSize-1){
+	if (leaf->numChild < childSize - 1){
+		// printf("start1\n");
 		insertToLeaf(leaf, index, key);
+		// printf("inserted: %d\n", *key);
 		return root;
 	}
 	return insertToLeafSplit(root, leaf, index, key);
@@ -167,36 +175,53 @@ void insertToLeaf(node *leaf, int index, int *key)
 
 node *insertToLeafSplit(node *root, node *leaf, int index, int *key)
 {
-	node *newLeaf;
+	node *newLeaf, **tempChild, *parent;
 	int *newKey, **tempKey;
 	int i, split;
 
 	tempKey = malloc(childSize * sizeof(int *));
+	tempChild = malloc(childSize * sizeof(node *));
 	for (i = 0; i < childSize; i++){
 		if (i == index){
 			tempKey[i] = malloc(sizeof(int));
+			// printf("index=%d\n",index);
 			tempKey[i] = key;
+			tempChild[i] = 	NULL;
 		}
-		else if (i < index)
+		else if (i < index){
 			tempKey[i] = leaf->keys[i];
-		else
+			tempChild[i] = leaf->children[i];
+		}
+		else{
 			tempKey[i] = leaf->keys[i-1];
+			tempChild[i] = leaf->children[i-1];
+		}
 	}
 
 	split = childSize / 2;
 	leaf->numChild = split;
-	for (i = 0; i < split; i++)
+	for (i = 0; i < split; i++){
 		leaf->keys[i] = tempKey[i];
+		leaf->children[i] = tempChild[i];
+	}
 
 	newLeaf = SetNewLeaf();
 	newLeaf->numChild = childSize - split;
-	for (i = split; i < childSize; i++)
+	for (i = split; i < childSize; i++){
 		newLeaf->keys[i - split] = tempKey[i];
+		newLeaf->children[i - split] = tempChild[i];
+	}
 
 	newLeaf->parent = leaf->parent;
+	newLeaf->children[childSize-1] = leaf->children[childSize-1];
 	leaf->children[childSize-1] = newLeaf;
 	free(tempKey);
+	free(tempChild);
 	newKey = newLeaf->keys[0];
+	printf("found leaf: %d\n", *leaf->keys[0]);
+	parent = leaf->parent;
+	if (parent)
+		printf("found leaf's parent: %d\n", *parent->keys[0]);	
 	return insertToParent(root, leaf, newLeaf, newKey);
 }
 
@@ -209,10 +234,11 @@ node *insertToParent(node *root, node *l, node *r, int *key)
 	if (parent == NULL){
 		return SetNewRoot(l, r, key);
 	}
-
+	printf("inserting to parent: %d\n", *parent->keys[0]);
 	for (index = 0; index < parent->numChild && parent->children[index] != l; index++){}
-	if (parent->numChild < childSize - 1){
+	if (parent->numChild < childSize - 2){
 		insertToNode(parent, r, index, key);
+		// printf("updated: %d\n", *key);
 		return root;
 	}
 	return insertToNodeSplit(root, parent, r, index, key);
@@ -236,10 +262,10 @@ node *insertToNodeSplit(node *root, node *nd, node *r, int index, int *key)
 	int i, split;
 	node **tempChild, *newNode, *child;
 	int **tempKey, *newKey;
-	tempChild = malloc((childSize + 1) * sizeof(node *));
+	tempChild = malloc((childSize) * sizeof(node *));
 	tempKey = malloc(childSize * sizeof(int *));
 
-	for (i = 0; i < childSize+1; i++){
+	for (i = 0; i < childSize; i++){
 		if (i == index + 1)
 			tempChild[i] = r;
 		else if (i < index+1)
@@ -258,6 +284,8 @@ node *insertToNodeSplit(node *root, node *nd, node *r, int index, int *key)
 			tempKey[i] = nd->keys[i-1];
 	}
 
+	// printf("i'm in inserttonode\n");
+
 	split = childSize % 2 ? childSize / 2 + 1 : childSize / 2;
 	nd->numChild = split - 1;
 	for (i = 0; i < split - 1; i++){
@@ -268,22 +296,27 @@ node *insertToNodeSplit(node *root, node *nd, node *r, int index, int *key)
 	newKey = tempKey[i];
 
 	newNode = SetNewNode();
-	newNode->numChild = childSize - split;
+	newNode->numChild = childSize - split - 1;
+
 	for (++i; i < childSize; i++){
 		newNode->children[i - split] = tempChild[i];
 		newNode->keys[i - split] = tempKey[i];
 	}
+
 	newNode->children[i - split] = tempChild[i];
 	newNode->parent = nd->parent;
+
 	for (i = 0; i <= newNode->numChild; i++){
 		child = (node *)(newNode->children[i]);
 		child->parent = newNode;
 	}
+	
 	newNode->next = nd->next;
 	nd->next = newNode;
 
 	free(tempChild);
 	free(tempKey);
+	// printf("updated: %d\n", *key);
 	return insertToParent(root, nd, newNode, newKey);
 }
 
@@ -299,8 +332,8 @@ void treePrint(node *root)
 	while (!p->isLeaf){
 		printf("[");
 		for (i = 0; i < p->numChild - 1; i++)
-			printf("%d,", p->keys[i]);
-		printf("%d]", p->keys[i]);
+			printf("%d,", *p->keys[i]);
+		printf("%d]", *p->keys[i]);
 		p = p->next;
 		if (!p){
 			p1 = p1->children[0];
@@ -312,8 +345,8 @@ void treePrint(node *root)
 	while (p){
 		printf("[");
 		for (i = 0; i < p->numChild - 1; i++)
-			printf("%d,", p->keys[i]);
-		printf("%d]", p->keys[i]);
+			printf("%d,", *p->keys[i]);
+		printf("%d]", *p->keys[i]);
 		p = p->children[childSize - 1];
 	}
 	printf("\n");
